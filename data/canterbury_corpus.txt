@@ -1,0 +1,11 @@
+C:\Users\gbonneau\git\zlib\data\canterbury\alice29.txt
+C:\Users\gbonneau\git\zlib\data\canterbury\asyoulik.txt
+C:\Users\gbonneau\git\zlib\data\canterbury\cp.html
+C:\Users\gbonneau\git\zlib\data\canterbury\fields.c
+C:\Users\gbonneau\git\zlib\data\canterbury\grammar.lsp
+C:\Users\gbonneau\git\zlib\data\canterbury\kennedy.xls
+C:\Users\gbonneau\git\zlib\data\canterbury\lcet10.txt
+C:\Users\gbonneau\git\zlib\data\canterbury\plrabn12.txt
+C:\Users\gbonneau\git\zlib\data\canterbury\ptt5
+C:\Users\gbonneau\git\zlib\data\canterbury\sum
+C:\Users\gbonneau\git\zlib\data\canterbury\xargs.1

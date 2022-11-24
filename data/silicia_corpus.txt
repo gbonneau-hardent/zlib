@@ -1,0 +1,12 @@
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\dickens
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\mozilla
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\mr
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\nci
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\ooffice
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\osdb
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\reymont
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\samba
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\sao
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\webster
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\x-ray
+C:\Users\gbonneau\git\zlib\data\silicia_corpus\xml
