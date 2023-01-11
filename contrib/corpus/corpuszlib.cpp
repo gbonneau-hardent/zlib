@@ -26,6 +26,7 @@
 extern "C" {
 #include "zlib.h"
 }
+#include "..\puff\puff.h"
 
 struct huffMethod
 {
@@ -217,10 +218,14 @@ int main()
                zcprInflate.avail_in = zcprDeflate.total_out;
                zcprInflate.avail_out = dataChunk[chunckIndex] * 2;
 
+#ifdef PUFF_INFLATE
+               unsigned long puffInSize = zcprDeflate.total_out - 2;  // No dictionnary thus zlib header is 2 bytes and must be skipped. See RFC 1950
+               int result = puff(inflateBuffer.get(), (unsigned long *)&(dataChunk[chunckIndex]), deflateBuffer.get()+2, &puffInSize);
+#else 
                inflateInit(&zcprInflate);
                ret = inflate(&zcprInflate, Z_FINISH);
                inflateEnd(&zcprInflate);
-
+#endif
                int retCmp = std::strncmp((const char*)fileBuffer.get(), (const char*)inflateBuffer.get(), dataChunk[chunckIndex]);
 
                if (retCmp != 0) {

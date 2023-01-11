@@ -404,6 +404,27 @@ struct LZ4Reader
 };
 
 
+std::string testLZ4("0123456789abkzde_0123456bczefthi01234567abcdefgh0123456789ABCDEFGHIJKLMNOP");
+
+size_t getBytesFromInTest(void* data, size_t numBytes, void* userPtr)
+{
+   static bool readStatus = false;
+
+   LZ4Reader* lz4Reader = (LZ4Reader*)userPtr;
+
+   if (readStatus) {
+      lz4Reader->dataEof = true;
+      return 0;
+   }
+
+   memcpy((char*)data, testLZ4.c_str(), testLZ4.size());
+   memcpy(lz4Reader->fileBuffer + lz4Reader->dataReadSize, data, testLZ4.size());
+
+   readStatus = true;
+
+   return testLZ4.size();
+}
+
 size_t getBytesFromIn(void* data, size_t numBytes, void* userPtr)
 {
    if (data && numBytes > 0) {
@@ -570,6 +591,7 @@ int main()
          while (true) {
 
             smallz4::lz4(getBytesFromIn, sendBytesToOut, searchWindow, dictionary, useLegacy, &lz4Reader);
+            //smallz4::lz4(getBytesFromInTest, sendBytesToOut, searchChainLength, dictionary, useLegacy, &lz4Reader);
 
             if (lz4Reader.dataEof) {
                break;

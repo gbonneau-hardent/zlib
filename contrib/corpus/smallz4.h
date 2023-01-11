@@ -419,14 +419,14 @@ private:
         // this is the core optimization loop
 
         // overhead of encoding a match: token (1 byte) + offset (2 bytes) + sometimes extra bytes for long matches
-        Cost   extraCost = 1 + 2;
+        Cost   matchCostToken = 1 + 2;
         Length nextCostIncrease = 18; // need one more byte for 19+ long matches (next increase: 19+255*x)
 
         // try all match lengths (start with short ones)
         for (Length length = MinMatch; length <= match.length; length++)
         {
           // token (1 byte) + offset (2 bytes) + extra bytes for long matches
-          Cost currentCost = cost[i + length] + extraCost;
+          Cost currentCost = cost[i + length] + matchCostToken;
           // better choice ?
           if (currentCost <= minCost)
           {
@@ -450,7 +450,7 @@ private:
           // very long matches need extra bytes for encoding match length
           if (length == nextCostIncrease)
           {
-            extraCost++;
+            matchCostToken++;
             nextCostIncrease += MaxLengthCode;
           }
         }
@@ -604,7 +604,7 @@ private:
 
       // greedy mode is much faster but produces larger output
       const bool isGreedy =              (maxChainLength <= ShortChainsGreedy);
-      // lazy evaluation: if there is a match, then try running match finder on next position, too, but not after that
+      // lazy evaluation: if there is a match, then try running match finder on next position, too, -->>>> BUT NOT AFTER THAT <<<<--
       const bool isLazy   = !isGreedy && (maxChainLength <= ShortChainsLazy);
       // skip match finding on the next x bytes in greedy mode
       Length skipMatches = 0;
@@ -652,7 +652,7 @@ private:
         // and store current position
         lastHash[hash] = i + lastBlock;
 
-        // remember: i could be negative, too
+        // remember: i could be negative, too (for example in the case a dictionnary is provided)
         Distance prevIndex = (i + MaxDistance + 1) & MaxDistance; // actually the same as i & MaxDistance
 
         // no predecessor / no hash chain available ?

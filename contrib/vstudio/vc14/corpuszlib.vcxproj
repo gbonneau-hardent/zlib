@@ -20,11 +20,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\corpus\corpuszlib.cpp" />
+    <ClCompile Include="..\..\puff\puff.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="zlibvc.vcxproj">
       <Project>{8fd826f8-3739-44e6-8cc8-997122e53b8d}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\puff\puff.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
