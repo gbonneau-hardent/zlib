@@ -391,6 +391,8 @@ struct LZ4Reader
    char compBuffer[8192];
 
    uint64_t totalSizeRead = 0;
+   uint64_t totalSizeReadStat = 0;
+   uint64_t totalSizeCompressStat = 0;
    uint64_t totalSizeCompress = 0;
    uint64_t totalMBytes = 0;
    uint64_t lastMBytes = 0;
@@ -496,8 +498,8 @@ int main()
 
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\calgary_corpus.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\enwik9.txt");
-   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
-   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
+   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
 
 
    std::string srcPathFileName;
@@ -541,7 +543,7 @@ int main()
 
    std::string srcStatName = listFileName.substr(listFileName.find_last_of("/\\") + 1);
 
-   for (uint32_t chunckIndex = 0; chunckIndex < 5; chunckIndex++)
+   for (uint32_t chunckIndex = 0; chunckIndex < 1; chunckIndex++)
    {
       std::shared_ptr<std::map<uint32_t, uint32_t>> compStatistic = std::shared_ptr<std::map<uint32_t, uint32_t>>(new std::map<uint32_t, uint32_t>);
       std::string statFileName = std::string("lz4_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".csv";
@@ -565,8 +567,12 @@ int main()
          (*compStatistic)[i] = 0;
       }
 
+      uint64_t compThreshold = (double)dataChunk[chunckIndex] / 1.00;
+
       lz4Reader.totalSizeRead = 0;
+      lz4Reader.totalSizeReadStat = 0;
       lz4Reader.totalSizeCompress = 0;
+      lz4Reader.totalSizeCompressStat = 0;
       lz4Reader.dataCompressSize = 0;
       lz4Reader.dataReadSize = 0;
       lz4Reader.dataCompressSize = 0;
@@ -585,8 +591,6 @@ int main()
          lz4Reader.dataEof = false;
          lz4Reader.dataCompressSize = 0;
          lz4Reader.dataReadSize = 0;
-         lz4Reader.dataCompressSize = 0;
-
 
          while (true) {
 
@@ -597,6 +601,20 @@ int main()
                break;
             }
 
+
+            if (lz4Reader.dataCompressSize <= compThreshold) {
+               lz4Reader.totalSizeReadStat += lz4Reader.dataReadSize;
+               lz4Reader.totalSizeCompressStat += lz4Reader.dataCompressSize;
+
+               double ratio = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
+               uint64_t intRatio = ratio;
+               intRatio = intRatio / 5;
+               intRatio = intRatio * 5;
+               double compChunckSize = 4096.0 / ((double)intRatio/100.0);
+               uint64_t intCompressSize = compChunckSize;
+
+               (*compStatistic)[intCompressSize]++;
+            }
             lz4DecompReader.available = lz4Reader.dataCompressSize;
             lz4DecompReader.compBuffer = lz4Reader.compBuffer;
             lz4DecompReader.decompPos = 0;
@@ -609,7 +627,7 @@ int main()
                assert(false);
                exit(-4);
             }
-            (*compStatistic)[lz4Reader.dataCompressSize]++;
+            //(*compStatistic)[lz4Reader.dataCompressSize]++;
             lz4Reader.dataCompressSize = 0;
             lz4Reader.dataReadSize = 0;
    
@@ -617,11 +635,14 @@ int main()
       }
 
       for (uint32_t i = 1; i < (dataChunk[chunckIndex] + 64); i++) {
-         std::cout << "compression size = " << i << ", static count = " << (*compStatistic)[i] << std::endl;
-         statFile << std::fixed << std::setprecision(2) << i << "," << ((double)dataChunk[chunckIndex] / (double)i) << "," << (*compStatistic)[i] << std::endl;
+         if ((*compStatistic)[i]) {
+            std::cout << "compression size = " << i << ", static count = " << (*compStatistic)[i] << std::endl;
+            statFile << std::fixed << std::setprecision(2) << i << "," << ((double)dataChunk[chunckIndex] / (double)i) << "," << (*compStatistic)[i] << std::endl;
+         }
       }
-      std::cout << "Compression ratio static Huffman = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
-      statFile << std::endl << "Compression ratio static Huffman = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;;
+      std::cout << "Compression ratio (>1.25) = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
+      std::cout << "Compression ratio = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
+      statFile << std::endl << "Compression ratio = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
       statFile.close();
    }
    for (auto iterFile = corpusList.begin(); iterFile != corpusList.end(); ++iterFile) {

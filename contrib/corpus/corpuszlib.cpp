@@ -80,8 +80,8 @@ int main()
 
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\calgary_corpus.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\enwik9.txt");
-   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
-   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
+   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
    
 
    std::string srcPathFileName;
@@ -126,7 +126,7 @@ int main()
 
    std::string srcStatName = listFileName.substr(listFileName.find_last_of("/\\") + 1);
 
-   for (uint32_t chunckIndex = 0; chunckIndex < 5; chunckIndex++)
+   for (uint32_t chunckIndex = 4; chunckIndex < 5; chunckIndex++)
    {
       std::shared_ptr<std::map<uint32_t, huffMethod>> compStatistic = std::shared_ptr<std::map<uint32_t, huffMethod>>(new std::map<uint32_t, huffMethod>);
       std::string statFileName = std::string("deflate_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".csv";
@@ -151,11 +151,15 @@ int main()
          (*compStatistic)[i].dynamicSize = 0;
       }
 
+      uint64_t compThreshold = 0;
       uint64_t totalSizeRead = 0;
+      uint64_t totalSizeReadStat = 0;
       uint64_t totalSizeCompress[2] = {};
       uint64_t totalMBytes = 0;
       uint64_t lastMBytes = 0;
       uint64_t loopCount = 0;
+
+      compThreshold = (double)dataChunk[chunckIndex] / 1.25;
 
       for (auto iterFile = corpusList.begin(); iterFile != corpusList.end(); ++iterFile) {
 
@@ -211,13 +215,17 @@ int main()
                ret = Z_OK;
                memset(&zcprInflate, 0, sizeof(z_stream));
 
-               totalSizeCompress[huffIndex] += zcprDeflate.total_out;
+               if (zcprDeflate.total_out <= compThreshold) {
+                  totalSizeCompress[huffIndex] += zcprDeflate.total_out;
+                  totalSizeReadStat += dataChunk[chunckIndex];
+               }
 
                zcprInflate.next_in = deflateBuffer.get();
                zcprInflate.next_out = inflateBuffer.get();
                zcprInflate.avail_in = zcprDeflate.total_out;
                zcprInflate.avail_out = dataChunk[chunckIndex] * 2;
 
+//#define PUFF_INFLATE
 #ifdef PUFF_INFLATE
                unsigned long puffInSize = zcprDeflate.total_out - 2;  // No dictionnary thus zlib header is 2 bytes and must be skipped. See RFC 1950
                int result = puff(inflateBuffer.get(), (unsigned long *)&(dataChunk[chunckIndex]), deflateBuffer.get()+2, &puffInSize);
@@ -241,8 +249,8 @@ int main()
          std::cout << "compression size = " << i << ", static count = " << (*compStatistic)[i].staticSize << ", dynamic count = " << (*compStatistic)[i].dynamicSize << std::endl;
          statFile << std::fixed << std::setprecision(2) << i << "," << ((double)dataChunk[chunckIndex] / (double)i) << "," << (*compStatistic)[i].staticSize << "," << (*compStatistic)[i].dynamicSize << std::endl;
       }
-      std::cout << "Compression ratio static Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[1] << std::endl << std::endl;
-      statFile << std::endl << "Compression ratio static Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[1] << std::endl << std::endl;;
+      std::cout << "Compression ratio static Huffman = " << (double)totalSizeReadStat / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeReadStat / (double)totalSizeCompress[1] << std::endl << std::endl;
+      statFile << std::endl << "Compression ratio static Huffman = " << (double)totalSizeReadStat / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeReadStat / (double)totalSizeCompress[1] << std::endl << std::endl;;
       statFile.close();
    }
    for (auto iterFile = corpusList.begin(); iterFile != corpusList.end(); ++iterFile) {
