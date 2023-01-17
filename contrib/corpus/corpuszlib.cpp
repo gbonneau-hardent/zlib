@@ -159,7 +159,10 @@ int main()
       uint64_t lastMBytes = 0;
       uint64_t loopCount = 0;
 
-      compThreshold = (double)dataChunk[chunckIndex] / 1.25;
+      if (dataChunk[chunckIndex] == 256)
+         compThreshold = (double)dataChunk[chunckIndex] / 1.00;
+      else 
+         compThreshold = (double)dataChunk[chunckIndex] / 1.25;
 
       for (auto iterFile = corpusList.begin(); iterFile != corpusList.end(); ++iterFile) {
 
@@ -216,6 +219,16 @@ int main()
                memset(&zcprInflate, 0, sizeof(z_stream));
 
                if (zcprDeflate.total_out <= compThreshold) {
+
+                  double ratio = (((double)dataChunk[chunckIndex] / (double)zcprDeflate.total_out)) * 100.0;
+                  uint64_t intRatio = ratio;
+                  intRatio = intRatio / 5;
+                  intRatio = intRatio * 5;
+                  double compChunckSize = (double)dataChunk[chunckIndex] / ((double)intRatio/100.0);
+                  uint64_t intCompressSize = compChunckSize;
+
+                  huffStrategy[huffIndex] == Z_FIXED ? (*compStatistic)[intCompressSize].staticSize++ : (*compStatistic)[intCompressSize].dynamicSize++;
+
                   totalSizeCompress[huffIndex] += zcprDeflate.total_out;
                   totalSizeReadStat += dataChunk[chunckIndex];
                }
@@ -240,12 +253,14 @@ int main()
                   assert(false);
                   exit(-4);
                }
-               huffStrategy[huffIndex] == Z_FIXED ? (*compStatistic)[zcprDeflate.total_out].staticSize++ : (*compStatistic)[zcprDeflate.total_out].dynamicSize++;
+               //huffStrategy[huffIndex] == Z_FIXED ? (*compStatistic)[zcprDeflate.total_out].staticSize++ : (*compStatistic)[zcprDeflate.total_out].dynamicSize++;
             }
          }
       }
 
       for (uint32_t i = 1; i < (dataChunk[chunckIndex] + 16); i++) {
+         if (((*compStatistic)[i].staticSize == 0) && ((*compStatistic)[i].dynamicSize == 0))
+            continue;
          std::cout << "compression size = " << i << ", static count = " << (*compStatistic)[i].staticSize << ", dynamic count = " << (*compStatistic)[i].dynamicSize << std::endl;
          statFile << std::fixed << std::setprecision(2) << i << "," << ((double)dataChunk[chunckIndex] / (double)i) << "," << (*compStatistic)[i].staticSize << "," << (*compStatistic)[i].dynamicSize << std::endl;
       }

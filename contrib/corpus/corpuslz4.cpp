@@ -601,19 +601,19 @@ int main()
                break;
             }
 
-
             if (lz4Reader.dataCompressSize <= compThreshold) {
                lz4Reader.totalSizeReadStat += lz4Reader.dataReadSize;
                lz4Reader.totalSizeCompressStat += lz4Reader.dataCompressSize;
 
-               double ratio = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
-               uint64_t intRatio = ratio;
-               intRatio = intRatio / 5;
-               intRatio = intRatio * 5;
-               double compChunckSize = 4096.0 / ((double)intRatio/100.0);
-               uint64_t intCompressSize = compChunckSize;
+               //double ratio = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
+               //uint64_t intRatio = ratio;
+               //intRatio = intRatio / 5;
+               //intRatio = intRatio * 5;
+               //double compChunckSize = 4096.0 / ((double)intRatio/100.0);
+               //uint64_t intCompressSize = compChunckSize;
 
-               (*compStatistic)[intCompressSize]++;
+               //(*compStatistic)[intCompressSize]++;
+               (*compStatistic)[lz4Reader.dataCompressSize]++;
             }
             lz4DecompReader.available = lz4Reader.dataCompressSize;
             lz4DecompReader.compBuffer = lz4Reader.compBuffer;
@@ -640,7 +640,7 @@ int main()
             statFile << std::fixed << std::setprecision(2) << i << "," << ((double)dataChunk[chunckIndex] / (double)i) << "," << (*compStatistic)[i] << std::endl;
          }
       }
-      std::cout << "Compression ratio (>1.25) = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
+      std::cout << "Compression ratio (>1.00) = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
       std::cout << "Compression ratio = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
       statFile << std::endl << "Compression ratio = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
       statFile.close();
