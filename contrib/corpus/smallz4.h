@@ -144,6 +144,8 @@ private:
     Length   length;
     /// start of match
     Distance distance;
+    // character
+    char     character;
   };
 
 
@@ -472,6 +474,102 @@ private:
   }
 
 
+   Match findMatch(uint32_t index, uint32_t matchIndex, std::vector<Match>& matches) const
+  {
+     auto curMatch = matches[index];
+     uint32_t distance = curMatch.distance;
+     int32_t nextIndex = index - curMatch.distance;
+
+     if (matches[nextIndex].distance == 0) {
+        return { 0,0,0 };
+     }
+     // Distance is valid. Check the match length.
+     uint32_t checkIndex = matchIndex;
+     uint32_t checkLength = 0;
+
+     for (uint32_t i = 0; i < matches[matchIndex].length; i++) {
+        if (matches[matchIndex + i].character == matches[nextIndex + i].character) {
+           checkLength++;
+        }
+     }
+     int32_t newIndex = index - curMatch.distance;
+
+     assert(checkLength >= 4);
+     assert(checkLength <= matches[newIndex].length);
+
+     return { checkLength, unsigned short(matchIndex - newIndex), matches[index].character };
+  };
+
+
+  boolean findMatchFarther(uint32_t refIndex, std::vector<Match>& matches) const
+  {
+     uint32_t bestIndex = 0xffffffff;
+     uint32_t bestLength = 0x0;
+     uint32_t bestDistance = 0x0;
+     uint32_t nextDistance = 0x0;
+     uint32_t nextIndex = refIndex;
+     bool     isFindBetterMatch = false;
+
+     while (true) {
+         if (nextIndex < 0) {
+            break;
+         }
+         Match nextMatch = matches[nextIndex];
+         nextDistance += nextMatch.distance;
+         nextIndex -= nextMatch.distance;
+         
+         if (nextMatch.distance == 0) {  // No further matches to be found.
+            break;
+         }
+         if (nextDistance <= 64) {
+            continue;
+         }
+         
+         // This is the longest match that was previously found before the calling. if the length is 4 we do not need to try to find a new match.
+         if (matches[refIndex].length == 4) {
+            bestIndex = nextIndex;
+            bestLength = 4;
+            bestDistance = nextDistance;
+            isFindBetterMatch = true;
+            break;
+         }
+         uint32_t checkIndex = nextIndex;
+         uint32_t checkLength = 0;
+         
+         for (uint32_t i = 0; i < matches[refIndex].length; i++) {
+            if (matches[refIndex + i].character == matches[nextIndex + i].character) {
+               checkLength++;
+               continue;
+            }
+            assert(i >= 3);
+            break;
+         }
+         if (checkLength > bestLength) {
+            bestLength = checkLength;
+            bestIndex = nextIndex;
+            bestDistance = nextDistance;
+            isFindBetterMatch = true;
+         }
+      }
+      if (isFindBetterMatch) {
+
+         //if (bestLength != 4)
+         //   return false;
+
+         for (uint32_t i = 0; i < bestLength; i++) {
+            if (matches[refIndex + i].character != matches[bestIndex + i].character) {
+               std::cout << "";
+            }
+         }
+         assert(bestLength <= matches[refIndex].length);
+         matches[refIndex].length = bestLength;
+         matches[refIndex].distance = bestDistance;
+      }
+
+      return isFindBetterMatch;
+  };
+
+
   /// compress everything in input stream (accessed via getByte) and write to output stream (via send), improve compression with a predefined dictionary
   void compress(GET_BYTES getBytes, SEND_BYTES sendBytes, const std::vector<unsigned char>& dictionary, bool useLegacyFormat, void* userPtr) const
   {
@@ -624,8 +722,15 @@ private:
         lookback = 0;
 
       std::vector<Match> matches(uncompressed ? 0 : blockSize);
+
+      uint32_t i = 0;
+      if (!uncompressed) {
+         for (char character : data) {
+            matches[i++].character = character;
+         }
+      }
       // find longest matches for each position (skip if level=0 which means "uncompressed")
-      int64_t i;
+
       for (i = lookback; i + BlockEndNoMatch <= int64_t(blockSize) && !uncompressed; i++)
       {
         // detect self-matching
@@ -733,7 +838,13 @@ private:
         }
 
         // and after all that preparation ... finally look for the longest match
+        Match curMatch = matches[i];
         matches[i] = findLongestMatch(data.data(), i + lastBlock, dataZero, nextBlock - BlockEndLiterals, previousExact.data());
+        matches[i].character = curMatch.character;
+
+        if (matches[i].length == JustLiteral) {
+           std::cout << "";
+        }
 
         // no match finding needed for the next few bytes in greedy/lazy mode
         if ((isLazy || isGreedy) && matches[i].length != JustLiteral)
@@ -754,6 +865,25 @@ private:
       // not needed in greedy mode and/or very short blocks
       if (matches.size() > BlockEndNoMatch && maxChainLength > ShortChainsGreedy)
         estimateCosts(matches);
+
+      bool isLess64Illegal = true;
+      uint32_t index = 0;
+      if (isLess64Illegal) {
+         for (auto & match : matches) {
+             if (match.distance <= 64 && match.distance != 0) {
+               if (match.distance != matches[index].distance) {
+                  assert(false);
+               }
+               if (findMatchFarther(index, matches)) {
+                  index++;
+                  continue;
+               }
+               match.distance = 0;
+               match.length = 1;
+            }
+            index++;
+         }
+      }
 
       // ==================== select best matches ====================
 
