@@ -29,7 +29,28 @@
 #  define NIL ((unsigned char *)0)      /* for no output option */
 #endif
 
-int puff(unsigned char *dest,           /* pointer to destination pointer */
-         unsigned long *destlen,        /* amount of output space */
-         const unsigned char *source,   /* pointer to source data pointer */
-         unsigned long *sourcelen);     /* amount of input available */
+#include <map>
+
+typedef struct symbolStats
+{
+   void updateStat(unsigned int len, unsigned int characters);
+
+   unsigned int groupSymbols = 0;
+   unsigned int totalBits = 0;
+   unsigned int bitSymbol = 0;
+   unsigned int groupCharacters = 0;
+   unsigned int numChunk = 0;
+   unsigned int numGroupDec = 0;
+   unsigned int thresholdBits = 32;
+
+   std::map<unsigned int, unsigned int> symbolHistogram = {};
+   std::map<unsigned int, unsigned int> bitsHistogram = {};
+   std::map<unsigned int, unsigned int> charHistogram = {};
+
+} symbolStats;
+
+int puff(unsigned char *dest,            /* pointer to destination pointer */
+         unsigned long *destlen,         /* amount of output space */
+         const unsigned char *source,    /* pointer to source data pointer */
+         unsigned long *sourcelen,       /* amount of input available */
+         struct symbolStats* stats = nullptr);

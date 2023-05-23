@@ -107,9 +107,12 @@ struct state {
     unsigned long incnt;        /* bytes read so far */
     int bitbuf;                 /* bit buffer */
     int bitcnt;                 /* number of bits in bit buffer */
+    int bitSymbol;              /* last symbol bit length */
 
     /* input limit error return state for bits() and decode() */
     jmp_buf env;
+
+    struct symbolStats* stats;
 };
 
 /*
@@ -259,8 +262,10 @@ local int decode(struct state *s, const struct huffman *h)
     for (len = 1; len <= MAXBITS; len++) {
         code |= bits(s, 1);             /* get next bit */
         count = h->count[len];
-        if (code - count < first)       /* if length len, return symbol */
-            return h->symbol[index + (code - first)];
+        if (code - count < first) {      /* if length len, return symbol */
+           s->bitSymbol = len;
+           return h->symbol[index + (code - first)];
+        }
         index += count;                 /* else update for next length */
         first += count;
         first <<= 1;
@@ -396,6 +401,127 @@ local int construct(struct huffman *h, const short *length, int n)
     return left;
 }
 
+
+#include <iostream>
+
+void
+symbolStats::updateStat(unsigned int len, unsigned int characters)
+{
+   unsigned int groupBits = totalBits + len;
+
+   if ((groupBits) <= thresholdBits) {
+      groupSymbols++;
+      totalBits += len;
+      groupCharacters += characters;
+      return;
+   }
+   symbolHistogram[groupSymbols]++;
+   bitsHistogram[groupSymbols] += totalBits;
+   charHistogram[groupCharacters]++;
+
+   numGroupDec++;
+   totalBits = len;
+   groupSymbols = 1;
+   groupCharacters = characters;
+}
+
+
+local int codesStat(struct state* s,
+   const struct huffman* lencode,
+   const struct huffman* distcode )
+{
+   int symbol;         /* decoded symbol */
+   int len;            /* length for copy */
+   unsigned dist;      /* distance for copy */
+   int loopCount;
+
+   static const short lens[29] = { /* Size base for length codes 257..285 */
+       3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+       35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 };
+   static const short lext[29] = { /* Extra bits for length codes 257..285 */
+       0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+       3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0 };
+   static const short dists[30] = { /* Offset base for distance codes 0..29 */
+       1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+       257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+       8193, 12289, 16385, 24577 };
+   static const short dext[30] = { /* Extra bits for distance codes 0..29 */
+       0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+       7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
+       12, 12, 13, 13 };
+
+   /* decode literals and length/distance pairs */
+
+   loopCount = 0;
+
+   do {
+      loopCount++;
+
+      if (loopCount == (1564 - 6)) {
+         std::cout << "";
+      }
+
+      symbol = decode(s, lencode);
+      if (symbol < 0)
+         return symbol;              /* invalid symbol */
+      if (symbol < 256) {             /* literal: symbol is the byte */
+          /* write out the literal */
+         if (s->out != NIL) {
+            if (s->outcnt == s->outlen)
+               return 1;
+            s->out[s->outcnt] = symbol;
+         }
+         s->stats->updateStat(s->bitSymbol, 1);
+         s->outcnt++;
+      }
+      else if (symbol > 256) {        /* length */
+          /* get and compute length */
+         symbol -= 257;
+         if (symbol >= 29)
+            return -10;             /* invalid fixed code */
+
+         s->stats->updateStat(s->bitSymbol + lext[symbol], 0);
+         len = lens[symbol] + bits(s, lext[symbol]);
+
+         /* get and check distance */
+         symbol = decode(s, distcode);
+         if (symbol < 0)
+            return symbol;          /* invalid symbol */
+
+         s->stats->updateStat(s->bitSymbol + dext[symbol], len);
+
+         dist = dists[symbol] + bits(s, dext[symbol]);
+#ifndef INFLATE_ALLOW_INVALID_DISTANCE_TOOFAR_ARRR
+         if (dist > s->outcnt)
+            return -11;     /* distance too far back */
+#endif
+
+            /* copy length bytes from distance bytes back */
+         if (s->out != NIL) {
+            if (s->outcnt + len > s->outlen)
+               return 1;
+            while (len--) {
+               s->out[s->outcnt] =
+#ifdef INFLATE_ALLOW_INVALID_DISTANCE_TOOFAR_ARRR
+                  dist > s->outcnt ?
+                  0 :
+#endif
+                  s->out[s->outcnt - dist];
+               s->outcnt++;
+            }
+         }
+         else
+            s->outcnt += len;
+      }
+
+   } while (symbol != 256);            /* end of block symbol */
+
+   /* done with a valid fixed or dynamic block */
+   return 0;
+}
+
+
+
 /*
  * Decode literal/length and distance codes until an end-of-block code.
  *
@@ -455,9 +581,13 @@ local int codes(struct state *s,
                 const struct huffman *lencode,
                 const struct huffman *distcode)
 {
+   if (s->stats != nullptr) {
+      return codesStat(s, lencode, distcode);
+   }
     int symbol;         /* decoded symbol */
     int len;            /* length for copy */
     unsigned dist;      /* distance for copy */
+
     static const short lens[29] = { /* Size base for length codes 257..285 */
         3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
         35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
@@ -526,6 +656,7 @@ local int codes(struct state *s,
     /* done with a valid fixed or dynamic block */
     return 0;
 }
+
 
 /*
  * Process a fixed codes block.
@@ -795,7 +926,10 @@ local int dynamic(struct state *s)
 int puff(unsigned char *dest,           /* pointer to destination pointer */
          unsigned long *destlen,        /* amount of output space */
          const unsigned char *source,   /* pointer to source data pointer */
-         unsigned long *sourcelen)      /* amount of input available */
+         unsigned long *sourcelen,      /* amount of input available */
+         struct symbolStats * stats)     /* stat*/
+
+
 {
     struct state s;             /* input/output state */
     int last, type;             /* block information */
@@ -812,6 +946,10 @@ int puff(unsigned char *dest,           /* pointer to destination pointer */
     s.incnt = 0;
     s.bitbuf = 0;
     s.bitcnt = 0;
+
+    symbolStats  puffStat;
+
+    s.stats = stats;
 
     /* return if bits() or decode() tries to read past available input */
     if (setjmp(s.env) != 0)             /* if came back here via longjmp() */
