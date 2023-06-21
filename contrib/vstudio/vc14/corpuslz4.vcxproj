@@ -21,6 +21,9 @@
   <ItemGroup>
     <ClCompile Include="..\..\corpus\corpuslz4.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\corpus\smallz4.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>

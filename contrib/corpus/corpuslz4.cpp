@@ -122,8 +122,17 @@ static void sendBytesToOut(const unsigned char* data, unsigned int numBytes, voi
 
 std::map<uint64_t, uint64_t> mapDist;
 
+typedef struct lz4Token
+{
+   unsigned char token;
+   unsigned short literalLength;
+   unsigned short offset;
+   unsigned short matchLength;
+   std::list<unsigned char> literal;
+};
+
 /// decompress everything in input stream (accessed via getByte) and write to output stream (via sendBytes)
-void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionary, void* userPtr, std::map<uint64_t, uint64_t> & chunkStat)
+void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionary, void* userPtr, std::map<uint64_t, uint64_t> & chunkStat, std::list<lz4Token> & listSequence)
 {
    // signature
    unsigned char signature1 = getByte(userPtr);
@@ -221,6 +230,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
 
       if (isCompressed)
       {
+
          // decompress block
          unsigned int blockOffset = 0;
          unsigned int numWritten = 0;
@@ -230,6 +240,9 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
          
          while (blockOffset < blockSize)
          {
+            listSequence.emplace_back();
+            lz4Token& tokenSequence = listSequence.back();
+
             // get a token
             if ((boundary64 - lastBoundary64) >= 64) {                              
                if (numSequence64 == 1) {                // A sequence might be greater than 64 if all literals with no matches. In which case it count as 1.
@@ -250,6 +263,8 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
             blockOffset++;
             boundary64++;
 
+            tokenSequence.token = token;
+
             // determine number of literals
             unsigned int numLiterals = token >> 4;
             if (numLiterals == 15)
@@ -264,6 +279,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
                   boundary64++;
                } while (current == 255);
             }
+            tokenSequence.literalLength = numLiterals;
 
             blockOffset += numLiterals;
             boundary64 += numLiterals;
@@ -272,8 +288,11 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
             if (pos + numLiterals < HISTORY_SIZE)
             {
                // fast loop
-               while (numLiterals-- > 0)
-                  history[pos++] = getByte(userPtr);
+               while (numLiterals-- > 0) {
+                  unsigned char oneLiteral = getByte(userPtr);
+                  history[pos++] = oneLiteral;
+                  tokenSequence.literal.push_back(oneLiteral);
+               }
             }
             else
             {
@@ -285,6 +304,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
                   // flush output buffer
                   if (pos == HISTORY_SIZE)
                   {
+                     assert(false);
                      sendBytes(history, HISTORY_SIZE, userPtr);
                      numWritten += HISTORY_SIZE;
                      pos = 0;
@@ -307,6 +327,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
 
             // match length (always >= 4, therefore length is stored minus 4)
             unsigned int matchLength = 4 + (token & 0x0F);
+
             if (matchLength == 4 + 0x0F)
             {
                unsigned char current;
@@ -318,6 +339,8 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
                   boundary64++;
                } while (current == 255);
             }
+            tokenSequence.offset = delta;
+            tokenSequence.matchLength = matchLength;
 
             mapDist[delta]++;
 
@@ -353,6 +376,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
                   if (pos == HISTORY_SIZE)
                   {
                      // flush output buffer
+                     assert(false);
                      sendBytes(history, HISTORY_SIZE, userPtr);
                      numWritten += HISTORY_SIZE;
                      pos = 0;
@@ -377,6 +401,7 @@ void unlz4_userPtr(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionar
             // ... until buffer is full => send to output
             if (pos == HISTORY_SIZE)
             {
+               assert(false);
                sendBytes(history, HISTORY_SIZE, userPtr);
                pos = 0;
             }
@@ -408,7 +433,6 @@ void unlz4(GET_BYTE getByte, SEND_BYTES sendBytes, const char* dictionary)
 
 
 // ==================== COMMAND-LINE HANDLING ====================
-
 
 #include "smallz4.h"
 
@@ -514,11 +538,23 @@ void sendBytesToOut(const void* data, size_t numBytes, void* userPtr)
 static uint64_t numDist = 0;
 static uint64_t numDist64 = 0;
 static double percentageDist64;
+uint32_t globalDebug = 0;
+uint32_t ratioDebug = 0;
+
+struct glitch {
+
+   std::pair<uint32_t, uint32_t> ratioPair1;
+   std::pair<uint32_t, uint32_t> ratioPair2;
+};
 
 int main()
 {
    LZ4Reader lz4Reader;
+
+   bool isTestLess64Illegal = true;
+
    LZ4DecompReader lz4DecompReader;
+
    std::vector<unsigned char> dictionary;
    bool useLegacy = false;
    unsigned short searchWindow = 65535;
@@ -535,7 +571,22 @@ int main()
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
 
    std::map<uint64_t, uint64_t> chunkStat;
+   std::map<uint64_t, uint64_t> chunkStatLess64Illegal;
+   std::map <std::string, uint64_t> ratioStat;
+   std::map <std::ifstream*, std::string> corpusFileName;
 
+   glitch test = { {0,1}, {2,3} };
+
+   std::map<std::string, glitch> glitchesDump;
+   glitchesDump["nci"]     = { { 591,336 }, { 433,234 } };
+   glitchesDump["dickens"] = { { 156,141 }, {   0,  0 } };
+   glitchesDump["mozilla"] = { { 625,223 }, { 706,255 } };
+   glitchesDump["mr"]      = { { 650,322 }, { 800,465 } };
+   glitchesDump["ooffice"] = { { 308,174 }, { 356,101 } };
+   glitchesDump["reymont"] = { { 290,249 }, {   0,  0 } };
+   glitchesDump["samba"]   = { { 658,319 }, { 712,252 } };
+   glitchesDump["webster"] = { { 221,178 }, { 199,162 } };
+   glitchesDump["xml"]     = { { 552,155 }, { 762,481 } };
 
    std::string srcPathFileName;
    std::ifstream listFile;
@@ -573,6 +624,7 @@ int main()
          std::cerr << e.code().message() << std::endl;
          exit(-3);
       }
+      corpusFileName[srcFile.get()] = srcPathFileName;
    }
    listFile.close();
 
@@ -581,13 +633,22 @@ int main()
    for (uint32_t chunckIndex = 4; chunckIndex < 5; chunckIndex++)
    {
       std::shared_ptr<std::map<uint32_t, uint32_t>> compStatistic = std::shared_ptr<std::map<uint32_t, uint32_t>>(new std::map<uint32_t, uint32_t>);
+
       std::string statFileName = std::string("lz4_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".csv";
+      std::string statFileNameNewLZ4 = std::string("lz4_new_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".csv";
+      std::string dumpFileNameNewLZ4 = std::string("lz4_new_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".txt";
 
       std::ofstream statFile;
+      std::ofstream statFileNewL4;
+      std::ofstream dumpFileNewL4;
       statFile.exceptions(std::ofstream::failbit | std::ofstream::badbit);
+      statFileNewL4.exceptions(std::ofstream::failbit | std::ofstream::badbit);
+      dumpFileNewL4.exceptions(std::ofstream::failbit | std::ofstream::badbit);
 
       try {
          statFile.open(statFileName.c_str(), std::ios::out | std::ios::trunc);
+         statFileNewL4.open(statFileNameNewLZ4.c_str(), std::ios::out | std::ios::trunc);
+         dumpFileNewL4.open(dumpFileNameNewLZ4.c_str(), std::ios::out | std::ios::trunc);
       }
       catch (std::system_error& e) {
          std::cerr << "Failed to open File " << statFileName << std::endl;
@@ -597,6 +658,11 @@ int main()
 
       statFile << "Source File Name = " << srcPathFileName << std::endl << std::endl;
       statFile << "Memory Chunck Size = " << dataChunk[chunckIndex] << std::endl << std::endl;
+      statFileNewL4 << "Source File Name = " << srcPathFileName << std::endl << std::endl;
+      statFileNewL4 << "Memory Chunck Size = " << dataChunk[chunckIndex] << std::endl << std::endl;
+      dumpFileNewL4 << "Source File Name = " << srcPathFileName << std::endl << std::endl;
+      dumpFileNewL4 << "Memory Chunck Size = " << dataChunk[chunckIndex] << std::endl << std::endl;
+
 
       for (uint32_t i = 0; i < (dataChunk[chunckIndex] + 64); i++) {
          (*compStatistic)[i] = 0;
@@ -632,10 +698,36 @@ int main()
          lz4Reader.dataCompressSize = 0;
          lz4Reader.dataReadSize = 0;
 
+         std::string fileName = corpusFileName[(*iterFile).get()];
+         bool isDebugFile = fileName.find("mozilla") != std::string::npos;
+         if (!isDebugFile) {
+            //continue;
+         }
+
+         std::string shortFileName = fileName.substr(fileName.find_last_of("\\")+1);
+         auto iterGlitch = glitchesDump.find(shortFileName);
+
+         if (iterGlitch == glitchesDump.end()) {
+            std::cout << "No glitch initialization values for file : " << shortFileName << std::endl;
+         }
+         glitch ratioCheck = iterGlitch->second;
+
+         ratioStat[fileName] = 0;
+         statFileNewL4 << "File Compressed : " << fileName << std::endl;
+         statFileNewL4 << "Statistic of compression loss with modified algorithm " << fileName << std::endl << std::endl;
+
+         dumpFileNewL4 << "File Compressed : " << fileName << std::endl;
+         dumpFileNewL4 << "Statistic of compression loss with modified algorithm " << fileName << std::endl << std::endl;
+
+
+         std::shared_ptr<std::map<uint32_t, uint32_t>> compLossStatistic = std::shared_ptr<std::map<uint32_t, uint32_t>>(new std::map<uint32_t, uint32_t>);
+         std::shared_ptr<std::list<std::pair<uint32_t, uint32_t>>> compLossCloud = std::shared_ptr<std::list<std::pair<uint32_t, uint32_t>>>(new std::list<std::pair<uint32_t, uint32_t>>);
+
          while (true) {
 
+            uint64_t filePosition = lz4Reader.srcFile->tellg();
+
             smallz4::lz4(getBytesFromIn, sendBytesToOut, searchWindow, dictionary, useLegacy, &lz4Reader);
-            //smallz4::lz4(getBytesFromInTest, sendBytesToOut, searchWindow, dictionary, useLegacy, &lz4Reader);
 
             if (lz4Reader.dataEof) {
                break;
@@ -646,19 +738,28 @@ int main()
                exit(-5);
             }
 
+            double ratio = 0.0;
+            double ratioNewLZ4 = 0.0;
+            double ratioLoss = 0.0;
+            uint64_t intRatio = 0;
+
             if (lz4Reader.dataCompressSize <= compThreshold) {
 
                lz4Reader.totalChunkCompress++;
                lz4Reader.totalSizeReadStat += lz4Reader.dataReadSize;
                lz4Reader.totalSizeCompressStat += lz4Reader.dataCompressSize;
 
-               double ratio = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
-               uint64_t intRatio = ratio;
+               ratio = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
+               intRatio = ratio;
                intRatio = intRatio / 5;
                intRatio = intRatio * 5;
                double compChunckSize = (double)dataChunk[chunckIndex] / ((double)intRatio/100.0);
                uint64_t intCompressSize = compChunckSize;
 
+               // We want to know which files from the corpus set yield the greatest ratio in some range.
+               if ((ratio/100.0 > 3.75) && (ratio/100.0 < 4.75)) {
+                  ratioStat[fileName]++;
+               }
                (*compStatistic)[intCompressSize]++;
             }
             else {
@@ -673,21 +774,133 @@ int main()
             lz4DecompReader.compBuffer = lz4Reader.compBuffer;
             lz4DecompReader.decompPos = 0;
 
-            unlz4_userPtr(getByteFromIn, sendBytesToOut, nullptr, &lz4DecompReader, chunkStat);
+            std::list<lz4Token> listSequence;
+            std::list<lz4Token> listSequenceLess64Illegal;
+
+            unlz4_userPtr(getByteFromIn, sendBytesToOut, nullptr, &lz4DecompReader, chunkStat, listSequence);
 
             int retCmp = std::strncmp(lz4Reader.fileBuffer, lz4DecompReader.decompBuffer, dataChunk[chunckIndex]);
-            
             if (retCmp != 0) {
                assert(false);
                exit(-6);
             }
-            //(*compStatistic)[lz4Reader.dataCompressSize]++;
-            lz4Reader.dataCompressSize = 0;
-            lz4Reader.dataReadSize = 0;
-   
-         }
-      }
 
+            uint32_t dataCompressSize;
+
+            if (isTestLess64Illegal) {
+
+               dataCompressSize = lz4Reader.dataCompressSize;
+
+               lz4Reader.dataCompressSize = 0;
+               lz4Reader.dataReadSize = 0;
+
+               lz4Reader.srcFile->seekg(filePosition);
+               smallz4::lz4(getBytesFromIn, sendBytesToOut, searchWindow, dictionary, useLegacy, &lz4Reader, isTestLess64Illegal);
+
+               lz4DecompReader.available = lz4Reader.dataCompressSize;
+               lz4DecompReader.compBuffer = lz4Reader.compBuffer;
+               lz4DecompReader.decompPos = 0;
+
+               ratioNewLZ4 = (((double)dataChunk[chunckIndex] / (double)lz4Reader.dataCompressSize)) * 100.0;
+
+               unlz4_userPtr(getByteFromIn, sendBytesToOut, nullptr, &lz4DecompReader, chunkStatLess64Illegal, listSequenceLess64Illegal);
+
+               int retCmp = std::strncmp(lz4Reader.fileBuffer, lz4DecompReader.decompBuffer, dataChunk[chunckIndex]);
+               if (retCmp != 0) {
+                  assert(false);
+                  exit(-6);
+               }
+            }
+            if (dataCompressSize <= compThreshold) {
+
+               ratioLoss = 100.0 * (ratio - ratioNewLZ4) / ratio;
+               int64_t intNewLZ4Ratio = ratioLoss * 10.0;
+               ratioLoss = double(intNewLZ4Ratio) / 10.0;
+
+               if (ratioCheck.ratioPair1 == std::pair<uint32_t, uint32_t>(uint32_t(ratio), uint32_t(ratioNewLZ4)) || 
+                   ratioCheck.ratioPair2 == std::pair<uint32_t, uint32_t>(uint32_t(ratio), uint32_t(ratioNewLZ4))) {
+ 
+                  dumpFileNewL4 << std::endl << "Filename is " << shortFileName << ", LZ4 ratio = " << std::setprecision(2) << (ratio/100.0) << ", New LZ4 ratio = " << (ratioNewLZ4/100.0) << std::endl << std::endl;
+
+                  char* asciiBuffer = lz4DecompReader.decompBuffer;
+
+                  uint32_t lineCount = 0;
+
+                  for (uint32_t i = 0; i < dataChunk[chunckIndex]; i++) {
+
+                     dumpFileNewL4 << std::hex << std::setfill('0') << std::setw(2) << uint16_t(((unsigned char)(asciiBuffer[lineCount]))) << " ";
+                     lineCount++;
+                     if (lineCount == 64) {
+
+                        dumpFileNewL4 << "    ";
+
+                        for (uint32_t j = 0; j < 64; j++) {
+                           dumpFileNewL4 << ((asciiBuffer[j] >= 32 && asciiBuffer[j] <= 127) ? asciiBuffer[j] : '.');
+                        }
+                        lineCount = 0;
+                        asciiBuffer += 64;
+                        dumpFileNewL4 << std::endl;
+                     }
+                  }
+                  dumpFileNewL4 << std::endl;
+                  uint32_t bufferPos = 0;
+
+                  for (auto& sequence : listSequence) {
+
+                     std::string matchString("");
+                     uint32_t matchPos = bufferPos + sequence.literalLength - sequence.offset;
+                     uint32_t matchLength = sequence.matchLength > 16 ? 16 : sequence.matchLength;
+                     char* match = lz4DecompReader.decompBuffer + matchPos;
+                     char matchBuffer[32];
+                     memcpy(matchBuffer, match, matchLength);
+                     for (uint32_t i = 0; i < matchLength; i++) {
+                        if (matchBuffer[i] < 32 || matchBuffer[i] > 127) {
+                           matchBuffer[i] = '.';
+                        }
+                     }
+                     matchString.assign(matchBuffer, matchLength);
+                     bufferPos += sequence.literalLength + sequence.matchLength;
+
+                     dumpFileNewL4 << "Token = 0x" << std::hex << std::setfill('0') << std::setw(2) << uint16_t(sequence.token) << ", Literal length = " << std::setfill(' ') << std::dec << std::right << std::setw(3) << sequence.literalLength << ", Match Rel Pos = " << std::right << std::setw(4) << matchPos << ", Match offset = " << std::right << std::setw(4) << sequence.offset << ", Match length = " << std::right << std::setw(4) << sequence.matchLength << " Match String : " << matchString << std::endl;
+                  }
+                  dumpFileNewL4 << std::endl;
+                  bufferPos = 0;
+
+                  for (auto& sequence : listSequenceLess64Illegal) {
+
+                     std::string matchString("");
+                     uint32_t matchPos = bufferPos + sequence.literalLength - sequence.offset;
+                     uint32_t matchLength = sequence.matchLength > 16 ? 16 : sequence.matchLength;
+                     char* match = lz4DecompReader.decompBuffer + matchPos;
+                     char matchBuffer[32];
+                     memcpy(matchBuffer, match, matchLength);
+                     for (uint32_t i = 0; i < matchLength; i++) {
+                        if (matchBuffer[i] < 32 || matchBuffer[i] > 127) {
+                           matchBuffer[i] = '.';
+                        }
+                     }
+                     matchString.assign(matchBuffer, matchLength);
+                     bufferPos += sequence.literalLength + sequence.matchLength;
+
+                     dumpFileNewL4 << "Token = 0x" << std::hex << std::setfill('0') << std::setw(2) << uint16_t(sequence.token) << ", Literal length = " << std::setfill(' ') << std::dec << std::right << std::setw(3) << sequence.literalLength << ", Match Rel Pos = " << std::right << std::setw(4) << matchPos << ", Match offset = " << std::right << std::setw(4) << sequence.offset << ", Match length = " << std::right << std::setw(4) << sequence.matchLength << " Match String : " << matchString << std::endl;
+                  }
+                  dumpFileNewL4 << std::endl;
+               }
+               (*compLossCloud).push_back({uint32_t(ratio), uint32_t(ratioNewLZ4)});
+               (*compLossStatistic)[intNewLZ4Ratio]++;
+            }
+            lz4Reader.dataCompressSize = 0;
+            lz4Reader.dataReadSize = 0;  
+         }
+         for (auto percLoss : (*compLossStatistic)) {
+            //statFileNewL4 << "Percentage Loss x 100," << percLoss.first << ", count ," << percLoss.second << std::endl;
+         }
+         statFileNewL4 << " Number of entried for this statistic = " << (*compLossCloud).size() << std::endl << std::endl;
+         for (auto percLoss : (*compLossCloud)) {
+            statFileNewL4 << "LZ4 ratio x 100," << percLoss.first << ", New LZ4 ratio x 100," << percLoss.second << std::endl;
+         }
+         statFileNewL4 << std::endl;
+      }
 
       numDist = 0;
       numDist64 = 0;
@@ -715,6 +928,8 @@ int main()
       std::cout << "Compression ratio global (all chunk) = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
       statFile << std::endl << "Compression ratio with threshold (" << threshold << ") = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
       statFile.close();
+      statFileNewL4.close();
+      dumpFileNewL4.close();
    }
    for (auto iterFile = corpusList.begin(); iterFile != corpusList.end(); ++iterFile) {
       std::shared_ptr<std::ifstream> srcFile = *iterFile;
