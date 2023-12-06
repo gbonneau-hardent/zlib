@@ -80,8 +80,16 @@ int main()
 
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\calgary_corpus.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\enwik9.txt");
-   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\video_media.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\protein_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\random.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_2d_8.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_2d_16.txt");
+   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_3d.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");  
+
+   std::map <std::ifstream*, std::string> corpusFileName;
 
    std::string srcPathFileName;
 
@@ -120,12 +128,13 @@ int main()
          std::cerr << e.code().message() << std::endl;
          exit(-1);
       }
+      corpusFileName[srcFile.get()] = srcPathFileName;
    }
    listFile.close();
 
    std::string srcStatName = listFileName.substr(listFileName.find_last_of("/\\") + 1);
 
-   for (uint32_t chunckIndex = 4; chunckIndex < 5; chunckIndex++) {
+   for (uint32_t chunckIndex = 0; chunckIndex < 5; chunckIndex++) {
 
       std::shared_ptr<std::map<uint32_t, huffMethod>> compStatistic = std::shared_ptr<std::map<uint32_t, huffMethod>>(new std::map<uint32_t, huffMethod>);
       std::string statFileName = std::string("deflate_") + srcStatName + "_" + std::to_string(dataChunk[chunckIndex]) + ".csv";
@@ -214,6 +223,12 @@ int main()
          srcFile->clear();
          srcFile->seekg(0);
 
+         std::string fileName = corpusFileName[(*iterFile).get()];
+         bool isXRayFile = fileName.find("sao") != std::string::npos;
+         if (!isXRayFile) {
+            //continue;
+         }
+
          while (true) {
             try {
                srcFile->read((char*)fileBuffer.get(), dataChunk[chunckIndex]);
@@ -277,10 +292,6 @@ int main()
                   huffStrategy[huffMode] == Z_FIXED ? (*compStatistic)[intCompressSize].staticSize++ : (*compStatistic)[intCompressSize].dynamicSize++;
 
                   totalSizeCompressStat[huffMode] += zcprDeflate.total_out;
-                  totalSizeReadStat[huffMode] += dataChunk[chunckIndex];
-               }
-               else {
-                  totalSizeCompressStat[huffMode] += dataChunk[chunckIndex];
                   totalSizeReadStat[huffMode] += dataChunk[chunckIndex];
                }
 
@@ -349,7 +360,12 @@ int main()
       std::cout << "Compression ratio with threshold (" << threshold << "), static Huffman = " << (double)totalSizeReadStat[0] / (double)totalSizeCompressStat[0] << ", dynamic Huffman = " << (double)totalSizeReadStat[1] / (double)totalSizeCompressStat[1] << std::endl;
       std::cout << "Compression ratio global (all chunk) static Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[1] << std::endl;
 
-      statFile << std::endl << "Compression ratio global (all chunk) static Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[1] << std::endl << std::endl;;
+      statFile << std::endl;
+      statFile << std::fixed << std::setprecision(1) << std::endl;
+      statFile << "Total chunks (size = " << dataChunk[chunckIndex] << ") processed = " << totalChunkCount[0] << " static chunk compressed = " << totalChunkCompress[0] << " (" << (totalChunkCompress[0] * 100.0) / totalChunkCount[0] << ") dynamic chunck compressed = " << totalChunkCompress[1] << " (" << (totalChunkCompress[1] * 100.0) / totalChunkCount[0] << ")" << std::endl;
+      statFile << std::fixed << std::setprecision(2);
+      statFile << "Compression ratio with threshold (" << threshold << ") static Huffman = " << (double)totalSizeReadStat[0] / (double)totalSizeCompressStat[0] << " dynamic Huffman = " << (double)totalSizeReadStat[1] / (double)totalSizeCompressStat[1] << std::endl;
+      statFile << std::endl << "Compression ratio global (all chunk) static Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[0] << " dynamic Huffman = " << (double)totalSizeRead / (double)totalSizeCompress[1] << std::endl;
       statFile.close();
 
       // Dump latency statistic.

@@ -567,7 +567,13 @@ int main()
 
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\calgary_corpus.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\enwik9.txt");
-   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\silicia_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\video_media.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\protein_corpus.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\random.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_2d_8.txt");
+   //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_2d_16.txt");
+   std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\lukas_3d.txt");
    //std::string listFileName("C:\\Users\\gbonneau\\git\\zlib\\data\\canterbury_corpus.txt");
 
    std::map<uint64_t, uint64_t> chunkStat;
@@ -575,18 +581,16 @@ int main()
    std::map <std::string, uint64_t> ratioStat;
    std::map <std::ifstream*, std::string> corpusFileName;
 
-   glitch test = { {0,1}, {2,3} };
-
    std::map<std::string, glitch> glitchesDump;
-   glitchesDump["nci"]     = { { 591,336 }, { 433,234 } };
-   glitchesDump["dickens"] = { { 156,141 }, {   0,  0 } };
-   glitchesDump["mozilla"] = { { 625,223 }, { 706,255 } };
-   glitchesDump["mr"]      = { { 650,322 }, { 800,465 } };
-   glitchesDump["ooffice"] = { { 308,174 }, { 356,101 } };
-   glitchesDump["reymont"] = { { 290,249 }, {   0,  0 } };
-   glitchesDump["samba"]   = { { 658,319 }, { 712,252 } };
-   glitchesDump["webster"] = { { 221,178 }, { 199,162 } };
-   glitchesDump["xml"]     = { { 552,155 }, { 762,481 } };
+   //glitchesDump["nci"]     = { { 591,336 }, { 433,234 } };
+   //glitchesDump["dickens"] = { { 156,141 }, {   0,  0 } };
+   //glitchesDump["mozilla"] = { { 625,223 }, { 706,255 } };
+   //glitchesDump["mr"]      = { { 650,322 }, { 800,465 } };
+   //glitchesDump["ooffice"] = { { 308,174 }, { 356,101 } };
+   //glitchesDump["reymont"] = { { 290,249 }, {   0,  0 } };
+   //glitchesDump["samba"]   = { { 658,319 }, { 712,252 } };
+   //glitchesDump["webster"] = { { 221,178 }, { 199,162 } };
+   //glitchesDump["xml"]     = { { 552,155 }, { 762,481 } };
 
    std::string srcPathFileName;
    std::ifstream listFile;
@@ -630,7 +634,7 @@ int main()
 
    std::string srcStatName = listFileName.substr(listFileName.find_last_of("/\\") + 1);
 
-   for (uint32_t chunckIndex = 4; chunckIndex < 5; chunckIndex++)
+   for (uint32_t chunckIndex = 0; chunckIndex < 5; chunckIndex++)
    {
       std::shared_ptr<std::map<uint32_t, uint32_t>> compStatistic = std::shared_ptr<std::map<uint32_t, uint32_t>>(new std::map<uint32_t, uint32_t>);
 
@@ -761,10 +765,6 @@ int main()
                   ratioStat[fileName]++;
                }
                (*compStatistic)[intCompressSize]++;
-            }
-            else {
-               lz4Reader.totalSizeReadStat += lz4Reader.dataReadSize;
-               lz4Reader.totalSizeCompressStat += lz4Reader.dataReadSize;
             }
             lz4Reader.totalChunkCount++;
             lz4Reader.totalSizeRead += lz4Reader.dataReadSize;
@@ -926,7 +926,14 @@ int main()
 
       std::cout << "Compression ratio with threshold (" << threshold << ") = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl;
       std::cout << "Compression ratio global (all chunk) = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
-      statFile << std::endl << "Compression ratio with threshold (" << threshold << ") = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl << std::endl;
+
+      statFile << std::fixed << std::setprecision(1) << std::endl;
+      statFile << "Total chunks (size = " << dataChunk[chunckIndex] << ") processed = " << lz4Reader.totalChunkCount << " chunks compressed = " << lz4Reader.totalChunkCompress << " (" << (lz4Reader.totalChunkCompress * 100.0) / lz4Reader.totalChunkCount << ")" << std::endl;
+      statFile << std::fixed << std::setprecision(2);
+
+      statFile << std::endl << "Compression ratio with threshold (" << threshold << ") = " << (double)lz4Reader.totalSizeReadStat / (double)lz4Reader.totalSizeCompressStat << std::endl;
+      statFile << "Compression ratio global (all chunk) = " << (double)lz4Reader.totalSizeRead / (double)lz4Reader.totalSizeCompress << std::endl << std::endl;
+
       statFile.close();
       statFileNewL4.close();
       dumpFileNewL4.close();
